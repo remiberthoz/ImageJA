@@ -1,18 +1,74 @@
 package ij.gui;
-import ij.*;
-import ij.plugin.frame.Recorder;
-import ij.plugin.ScreenGrabber;
-import ij.plugin.filter.PlugInFilter;
-import ij.plugin.filter.PlugInFilterRunner;
-import ij.util.Tools;
-import ij.macro.*;
+import java.awt.AWTEvent;
+import java.awt.BorderLayout;
+import java.awt.Button;
+import java.awt.Checkbox;
+import java.awt.CheckboxGroup;
+import java.awt.Choice;
+import java.awt.Color;
+import java.awt.Component;
+import java.awt.Dialog;
+import java.awt.Dimension;
+import java.awt.EventQueue;
+import java.awt.FlowLayout;
+import java.awt.Font;
+import java.awt.Frame;
+import java.awt.Graphics;
+import java.awt.GraphicsEnvironment;
+import java.awt.GridBagConstraints;
+import java.awt.GridBagLayout;
+import java.awt.GridLayout;
+import java.awt.Insets;
+import java.awt.Label;
+import java.awt.Panel;
+import java.awt.Scrollbar;
+import java.awt.SystemColor;
+import java.awt.TextArea;
+import java.awt.TextField;
+import java.awt.Toolkit;
+import java.awt.datatransfer.DataFlavor;
+import java.awt.datatransfer.UnsupportedFlavorException;
+import java.awt.dnd.DnDConstants;
+import java.awt.dnd.DropTarget;
+import java.awt.dnd.DropTargetAdapter;
+import java.awt.dnd.DropTargetDropEvent;
+import java.awt.event.ActionEvent;
+import java.awt.event.ActionListener;
+import java.awt.event.AdjustmentEvent;
+import java.awt.event.AdjustmentListener;
+import java.awt.event.FocusEvent;
+import java.awt.event.FocusListener;
+import java.awt.event.ItemEvent;
+import java.awt.event.ItemListener;
+import java.awt.event.KeyEvent;
+import java.awt.event.KeyListener;
+import java.awt.event.TextEvent;
+import java.awt.event.TextListener;
+import java.awt.event.WindowEvent;
+import java.awt.event.WindowListener;
+import java.io.File;
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Hashtable;
+import java.util.Locale;
+import java.util.Vector;
+import java.util.stream.Collectors;
+
+import ij.CompositeImage;
+import ij.IJ;
+import ij.ImageJ;
+import ij.ImagePlus;
+import ij.Macro;
+import ij.Prefs;
+import ij.WindowManager;
 import ij.io.OpenDialog;
-import java.awt.*;
-import java.io.*;
-import java.awt.event.*;
-import java.util.*;
-import java.awt.datatransfer.*;
-import java.awt.dnd.*;
+import ij.macro.Interpreter;
+import ij.macro.MacroRunner;
+import ij.plugin.ScreenGrabber;
+import ij.plugin.filter.PlugInFilterRunner;
+import ij.plugin.frame.Recorder;
+import ij.util.Tools;
 
 
 /**
@@ -43,8 +99,9 @@ import java.awt.dnd.*;
 */
 public class GenericDialog extends Dialog implements ActionListener, TextListener,
 FocusListener, ItemListener, KeyListener, AdjustmentListener, WindowListener {
-
-	protected Vector numberField, stringField, checkbox, choice, slider, radioButtonGroups;
+	
+	private java.util.List<String> scriptLines=new ArrayList<>();
+ 	protected Vector numberField, stringField, checkbox, choice, slider, radioButtonGroups;
 	protected TextArea textArea1, textArea2;
 	protected Vector defaultValues,defaultText,defaultStrings,defaultChoiceIndexes;
 	protected Component theLabel;
@@ -156,6 +213,8 @@ FocusListener, ItemListener, KeyListener, AdjustmentListener, WindowListener {
    		String label2 = label;
    		if (label2.indexOf('_')!=-1)
    			label2 = label2.replace('_', ' ');
+   		String label3 = units == null || units.isEmpty() ? label2 : String.format("%s (%s)", label2, units);
+	   	scriptLines.add(String.format("#@ String (label=%s, value=%s) %s", label3, defaultValue, labelToName(label)));
 		Label fieldLabel = makeLabel(label2);
 		this.lastLabelAdded = fieldLabel;
 		if (addToSameRow) {
@@ -261,6 +320,7 @@ FocusListener, ItemListener, KeyListener, AdjustmentListener, WindowListener {
    		String label2 = label;
    		if (label2.indexOf('_')!=-1)
    			label2 = label2.replace('_', ' ');
+	   	scriptLines.add(String.format("#@ String (label=%s, value=%s) %s", label2, defaultText, labelToName(label)));
 		Label fieldLabel = makeLabel(label2);
 		this.lastLabelAdded = fieldLabel;
 		boolean custom = customInsets;
@@ -323,6 +383,8 @@ FocusListener, ItemListener, KeyListener, AdjustmentListener, WindowListener {
 	public void addDirectoryField(String label, String defaultPath, int columns) {
 		defaultPath = IJ.addSeparator(defaultPath);
 		addStringField(label, defaultPath, columns);
+		String lastLine = scriptLines.remove(scriptLines.size() - 1);
+		scriptLines.add(String.format("#@ File (style=directory, %s", lastLine.substring(11)));
 		if (GraphicsEnvironment.isHeadless())
 			return;
 		TextField text = (TextField)stringField.lastElement();
@@ -354,6 +416,8 @@ FocusListener, ItemListener, KeyListener, AdjustmentListener, WindowListener {
 
 	public void addFileField(String label, String defaultPath, int columns) {
 		addStringField(label, defaultPath, columns);
+		String lastLine = scriptLines.remove(scriptLines.size() - 1);
+		scriptLines.add(String.format("#@ File %s", lastLine.substring(10)));
 		if (GraphicsEnvironment.isHeadless())
 			return;
 		TextField text = (TextField)stringField.lastElement();
@@ -469,6 +533,7 @@ FocusListener, ItemListener, KeyListener, AdjustmentListener, WindowListener {
     	String label2 = label;
    		if (label2.indexOf('_')!=-1)
    			label2 = label2.replace('_', ' ');
+	   	scriptLines.add(String.format("#@ Boolean (label=%s, value=%s) %s", label2, defaultValue, labelToName(label)));
 		if (addToSameRow) {
 			c.gridx = GridBagConstraints.RELATIVE;
 			c.insets.left = 10;
@@ -588,8 +653,10 @@ FocusListener, ItemListener, KeyListener, AdjustmentListener, WindowListener {
 					i1++;
 					continue;
 				}
+				String name = labelToName(label);
 				if (label.indexOf('_')!=-1)
    					label = label.replace('_', ' ');
+			   	scriptLines.add(String.format("#@ Boolean (label=%s, value=%s) %s", label, defaultValues[i1], name)); // might be small boolean
 				Checkbox cb = new Checkbox(label);
 				checkbox.addElement(cb);
 				cb.setState(defaultValues[i1]);
@@ -660,9 +727,11 @@ FocusListener, ItemListener, KeyListener, AdjustmentListener, WindowListener {
    * @param defaultItem	the menu item initially selected
    */
    public void addChoice(String label, String[] items, String defaultItem) {
+	   	java.util.List<String> choices = Arrays.asList(items).stream().map(item -> "\"" + item + "\"").collect(Collectors.toList());
    		String label2 = label;
    		if (label2.indexOf('_')!=-1)
    			label2 = label2.replace('_', ' ');
+	   	scriptLines.add(String.format("#@ String (label=%s, choices={%s}, value=%s) %s", label2, String.join(", ", choices), defaultItem, labelToName(label)));
 		Label fieldLabel = makeLabel(label2);
 		this.lastLabelAdded = fieldLabel;
 		if (addToSameRow) {
@@ -700,6 +769,22 @@ FocusListener, ItemListener, KeyListener, AdjustmentListener, WindowListener {
 		if (Recorder.record || macro)
 			saveLabel(thisChoice, label);
     }
+
+	private String labelToName(String label) {
+    	if (labels==null)
+    		labels = new Hashtable();
+    	if (label.length()>0)
+    		label = Macro.trimKey(label.trim());
+    	if (label.length()>0 && hasLabel(label)) {                      // not a unique label?
+    		label += "_0";
+    		for (int n=1; hasLabel(label); n++) {   // while still not a unique label
+    			label = label.substring(0, label.lastIndexOf('_')); //remove counter
+    			label += "_"+n;
+    		}
+    	}
+
+		return label;
+	}
 
     /** Adds a message consisting of one or more lines of text. */
     public void addMessage(String text) {
@@ -1385,6 +1470,9 @@ FocusListener, ItemListener, KeyListener, AdjustmentListener, WindowListener {
 
 	/** Displays this dialog box. */
 	public void showDialog() {
+		scriptLines.forEach(line -> System.out.println(line));
+		//also print out execution --> find a script that does this
+		//like will need var names.add with scriptLines.add (
 		showDialogCalled = true;
 		if (macro) {
 			dispose();
