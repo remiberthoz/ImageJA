@@ -56,6 +56,7 @@ import java.util.Vector;
 import java.util.stream.Collectors;
 
 import ij.CompositeImage;
+import ij.Executer;
 import ij.IJ;
 import ij.ImageJ;
 import ij.ImagePlus;
@@ -101,6 +102,7 @@ public class GenericDialog extends Dialog implements ActionListener, TextListene
 FocusListener, ItemListener, KeyListener, AdjustmentListener, WindowListener {
 	
 	private java.util.List<String> scriptLines=new ArrayList<>();
+	private java.util.List<String> commandLines=new ArrayList<>();
  	protected Vector numberField, stringField, checkbox, choice, slider, radioButtonGroups;
 	protected TextArea textArea1, textArea2;
 	protected Vector defaultValues,defaultText,defaultStrings,defaultChoiceIndexes;
@@ -214,7 +216,8 @@ FocusListener, ItemListener, KeyListener, AdjustmentListener, WindowListener {
    		if (label2.indexOf('_')!=-1)
    			label2 = label2.replace('_', ' ');
    		String label3 = units == null || units.isEmpty() ? label2 : String.format("%s (%s)", label2, units);
-	   	scriptLines.add(String.format("#@ String (label=%s, value=%s) %s", label3, defaultValue, labelToName(label)));
+	   	scriptLines.add(String.format("#@ Double (label='%s', value=%f) %s", label3, defaultValue, labelToName(label)));
+	   	commandLines.add(String.format("\"%s%s=\" + %s",commandLines.isEmpty() ? "" : " ",labelToName(label), labelToName(label)));
 		Label fieldLabel = makeLabel(label2);
 		this.lastLabelAdded = fieldLabel;
 		if (addToSameRow) {
@@ -320,7 +323,8 @@ FocusListener, ItemListener, KeyListener, AdjustmentListener, WindowListener {
    		String label2 = label;
    		if (label2.indexOf('_')!=-1)
    			label2 = label2.replace('_', ' ');
-	   	scriptLines.add(String.format("#@ String (label=%s, value=%s) %s", label2, defaultText, labelToName(label)));
+	   	scriptLines.add(String.format("#@ String (label='%s', value='%s') %s", label2, defaultText, labelToName(label)));
+	   	commandLines.add(String.format("\"%s%s=\" + %s",commandLines.isEmpty() ? "" : " ",labelToName(label), labelToName(label)));
 		Label fieldLabel = makeLabel(label2);
 		this.lastLabelAdded = fieldLabel;
 		boolean custom = customInsets;
@@ -385,6 +389,7 @@ FocusListener, ItemListener, KeyListener, AdjustmentListener, WindowListener {
 		addStringField(label, defaultPath, columns);
 		String lastLine = scriptLines.remove(scriptLines.size() - 1);
 		scriptLines.add(String.format("#@ File (style=directory, %s", lastLine.substring(11)));
+		commandLines.add(String.format("\"%s%s=\" + %s.getAbsolutePath()",commandLines.isEmpty() ? "" : " ",labelToName(label), labelToName(label)));
 		if (GraphicsEnvironment.isHeadless())
 			return;
 		TextField text = (TextField)stringField.lastElement();
@@ -533,7 +538,8 @@ FocusListener, ItemListener, KeyListener, AdjustmentListener, WindowListener {
     	String label2 = label;
    		if (label2.indexOf('_')!=-1)
    			label2 = label2.replace('_', ' ');
-	   	scriptLines.add(String.format("#@ Boolean (label=%s, value=%s) %s", label2, defaultValue, labelToName(label)));
+	   	scriptLines.add(String.format("#@ Boolean (label='%s', value='%s') %s", label2, defaultValue, labelToName(label)));
+	   	commandLines.add(String.format("(%s ? \"%s%s\" : \"\")",labelToName(label), commandLines.isEmpty() ? "" : " ", labelToName(label)));
 		if (addToSameRow) {
 			c.gridx = GridBagConstraints.RELATIVE;
 			c.insets.left = 10;
@@ -656,7 +662,8 @@ FocusListener, ItemListener, KeyListener, AdjustmentListener, WindowListener {
 				String name = labelToName(label);
 				if (label.indexOf('_')!=-1)
    					label = label.replace('_', ' ');
-			   	scriptLines.add(String.format("#@ Boolean (label=%s, value=%s) %s", label, defaultValues[i1], name)); // might be small boolean
+			   	scriptLines.add(String.format("#@ Boolean (label='%s', value=%s) %s", label, defaultValues[i1], name)); // might be small boolean
+			   	commandLines.add(String.format("(%s ? \"%s%s\" : \"\")",name, commandLines.isEmpty() ? "" : " ", name));
 				Checkbox cb = new Checkbox(label);
 				checkbox.addElement(cb);
 				cb.setState(defaultValues[i1]);
@@ -713,7 +720,8 @@ FocusListener, ItemListener, KeyListener, AdjustmentListener, WindowListener {
 			insets.top = 2;
 			insets.left += 10;
 		}
-	   	scriptLines.add(String.format("#@ String (label=%s, options={%s}, value=%s) %s", label, String.join(", ", radioButtons), defaultItem, labelToName(label)));
+	   	scriptLines.add(String.format("#@ String (label='%s', choices={%s}, value='%s') %s", label, String.join(", ", radioButtons), defaultItem, labelToName(label)));
+	   	commandLines.add(String.format("\"%s%s=\" + %s",commandLines.isEmpty() ? "" : " ",labelToName(label), labelToName(label)));
 		c.gridx = 0; c.gridy++;
 		c.gridwidth = GridBagConstraints.REMAINDER;
 		c.anchor = GridBagConstraints.WEST;
@@ -733,8 +741,9 @@ FocusListener, ItemListener, KeyListener, AdjustmentListener, WindowListener {
    		String label2 = label;
    		if (label2.indexOf('_')!=-1)
    			label2 = label2.replace('_', ' ');
-	   	scriptLines.add(String.format("#@ String (label=%s, choices={%s}, value=%s) %s", label2, String.join(", ", choices), defaultItem, labelToName(label)));
-		Label fieldLabel = makeLabel(label2);
+	   	scriptLines.add(String.format("#@ String (label='%s', choices={%s}, value='%s') %s", label2, String.join(", ", choices), defaultItem, labelToName(label)));
+	   	commandLines.add(String.format("\"%s%s=\" + %s",commandLines.isEmpty() ? "" : " ",labelToName(label), labelToName(label)));
+	   	Label fieldLabel = makeLabel(label2);
 		this.lastLabelAdded = fieldLabel;
 		if (addToSameRow) {
 			c.gridx = GridBagConstraints.RELATIVE;
@@ -944,7 +953,8 @@ FocusListener, ItemListener, KeyListener, AdjustmentListener, WindowListener {
    		if (label2.indexOf('_')!=-1)
    			label2 = label2.replace('_', ' ');
 		Label fieldLabel = makeLabel(label2);
-	   	scriptLines.add(String.format("#@ Integer (label=%s, value=%s, min=%s, max=%s, stepSize=%s) %s", label2, defaultValue, minValue, maxValue, scale, labelToName(label)));
+	   	scriptLines.add(String.format("#@ Double (label='%s', value=%f, min=%f, max=%f) %s", label2, defaultValue/scale, minValue/scale, maxValue/scale, labelToName(label)));
+	   	commandLines.add(String.format("\"%s%s=\" + %s",commandLines.isEmpty() ? "" : " ",labelToName(label), labelToName(label)));
 		this.lastLabelAdded = fieldLabel;
 		if (addToSameRow) {
 			c.gridx = GridBagConstraints.RELATIVE;
@@ -1473,7 +1483,21 @@ FocusListener, ItemListener, KeyListener, AdjustmentListener, WindowListener {
 
 	/** Displays this dialog box. */
 	public void showDialog() {
-		scriptLines.forEach(line -> System.out.println(line));
+		String cmd = Executer.edCommand;
+		boolean hasImp = (WindowManager.getCurrentImage()!=null
+				&&(cmd.equals("Properties... ")||cmd.equals("Fit Spline")||scriptLines.stream().anyMatch(line -> line.endsWith(" save"))))
+				|| ! scriptLines.stream().anyMatch(line -> line.endsWith(" open"));
+		if (hasImp) {
+			System.out.println("#@ ImagePlus imp");
+		}
+		scriptLines.forEach(System.out::println);
+		if (hasImp) {
+			System.out.println("IJ.run(imp, \"" + cmd + "\",");
+		} else {
+			System.out.println("IJ.run(\"" + cmd + "\",");
+		}
+		
+		System.out.println(String.join(" +\n", commandLines) + ");");
 		//also print out execution --> find a script that does this
 		//like will need var names.add with scriptLines.add (
 		showDialogCalled = true;
